@@ -45,6 +45,7 @@ func main() {
 	http.HandleFunc("/submit-score", handlers.SubmitScore(pgDB, redisClient))
 	http.HandleFunc("/leaderboard", handlers.GetLeaderboard(redisClient))
 	http.HandleFunc("/rank", handlers.GetRank(redisClient))
+	http.HandleFunc("/top-players", handlers.GetTopPlayers(pgDB))
 
 	// Запуск сервера
 	log.Println("Сервер запущен на :8080")
