@@ -11,26 +11,31 @@ import (
 )
 
 func SubmitScore(db *sql.DB, redisClient *redis.Client) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// Проверяем токен (заглушка, позже добавим проверку JWT)
+	return JWTMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		username := r.Header.Get("Username")
+		if username == "" {
+			http.Error(w, "Ошибка авторизации", http.StatusUnauthorized)
+			return
+		}
 
 		var score models.Score
 		if err := json.NewDecoder(r.Body).Decode(&score); err != nil {
 			http.Error(w, "Неверный запрос", http.StatusBadRequest)
 			return
 		}
+		score.Username = username // Устанавливаем username из токена
 
-		// Получаем ID пользователя из базы по username
+		// Получаем ID пользователя из базы
 		var userID int
 		err := db.QueryRow(
 			"SELECT id FROM users WHERE username = $1",
-			score.Username, // Добавим поле Username в models.Score
+			score.Username,
 		).Scan(&userID)
 		if err != nil {
 			http.Error(w, "Пользователь не найден", http.StatusNotFound)
 			return
 		}
-		score.UserID = userID // Заполняем UserID для записи в БД
+		score.UserID = userID
 
 		// Сохраняем очки в PostgreSQL
 		_, err = db.Exec(
@@ -43,12 +48,12 @@ func SubmitScore(db *sql.DB, redisClient *redis.Client) http.HandlerFunc {
 			return
 		}
 
-		// Обновляем лидерборд в Redis (глобальный лидерборд)
+		// Обновляем лидерборд в Redis
 		ctx := context.Background()
 		redisKey := "leaderboard:global"
 		err = redisClient.ZAdd(ctx, redisKey, redis.Z{
 			Score:  float64(score.Score),
-			Member: score.Username, // Используем Username как идентификатор в Redis
+			Member: score.Username,
 		}).Err()
 		if err != nil {
 			log.Println("Ошибка обновления лидерборда в Redis:", err)
@@ -58,5 +63,5 @@ func SubmitScore(db *sql.DB, redisClient *redis.Client) http.HandlerFunc {
 
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]string{"message": "Очки успешно отправлены"})
-	}
+	})
 }
