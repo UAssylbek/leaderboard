@@ -13,7 +13,6 @@ import (
 
 var jwtKey []byte
 
-// SetJWTSecret задает секретный ключ для JWT
 func SetJWTSecret(key []byte) {
 	jwtKey = key
 }

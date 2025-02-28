@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -15,19 +16,44 @@ func GetLeaderboard(redisClient *redis.Client) http.HandlerFunc {
 		ctx := context.Background()
 		redisKey := "leaderboard:global"
 
-		// Получаем топ-10 пользователей из Redis Sorted Set
-		leaderboard, err := redisClient.ZRevRangeWithScores(ctx, redisKey, 0, 9).Result()
+		offsetStr := r.URL.Query().Get("offset")
+		limitStr := r.URL.Query().Get("limit")
+
+		offset := 0
+		limit := 10
+
+		if offsetStr != "" {
+			if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
+				offset = o
+			} else {
+				SendError(w, "Неверный параметр offset", http.StatusBadRequest)
+				return
+			}
+		}
+
+		if limitStr != "" {
+			l, err := strconv.Atoi(limitStr)
+			if err != nil || l <= 0 {
+				SendError(w, "Неверный параметр limit", http.StatusBadRequest)
+				return
+			}
+			limit = l
+		}
+
+		start := int64(offset)
+		end := int64(offset + limit - 1)
+
+		leaderboard, err := redisClient.ZRevRangeWithScores(ctx, redisKey, start, end).Result()
 		if err != nil {
-			http.Error(w, "Ошибка получения лидерборда", http.StatusInternalServerError)
+			SendError(w, "Ошибка получения лидерборда", http.StatusInternalServerError)
 			return
 		}
 
-		// Форматируем результат в JSON
 		type LeaderboardEntry struct {
 			Username string  `json:"username"`
 			Score    float64 `json:"score"`
 		}
-		var result []LeaderboardEntry
+		result := make([]LeaderboardEntry, 0)
 		for _, entry := range leaderboard {
 			result = append(result, LeaderboardEntry{
 				Username: entry.Member.(string),
